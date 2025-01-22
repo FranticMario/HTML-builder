@@ -12,7 +12,9 @@ const readFilesInFolder = async () => {
       if (!file.isFile()) continue
 
       const statFile = await fs.stat(path.join(newPath, file.name))
-      results.push(`${file.name} - ${(statFile.size / 1024).toFixed(2)} kB`)
+      const { name, ext } = path.parse(file.name)
+      const fileSize = (statFile.size / 1024).toFixed(3)
+      results.push(`${name} - ${ext.slice(1)} - ${fileSize}kb`)
     }
 
     return results

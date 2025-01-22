@@ -1,93 +1,75 @@
-const fs = require('fs')
+const fs = require('fs').promises
 const path = require('path')
-const fsPromises = require('fs/promises')
-const readline = require('readline')
 
-const templateFilePath = path.join(__dirname, 'template.html')
-const componentsDir = path.join(__dirname, 'components')
-const stylesDir = path.join(__dirname, 'styles')
-const assetsDir = path.join(__dirname, 'assets')
-const outputDir = path.join(__dirname, 'project-dist')
-const outputFilePath = path.join(outputDir, 'index.html')
-const styleFilePath = path.join(outputDir, 'style.css')
-const outputAssetsDir = path.join(outputDir, 'assets')
+const distFolder = path.join(__dirname, 'project-dist')
+const templatePath = path.join(__dirname, 'template.html')
+const componentsPath = path.join(__dirname, 'components')
+const stylesFolder = path.join(__dirname, 'styles')
+const assetsFolder = path.join(__dirname, 'assets')
+const distHTML = path.join(distFolder, 'index.html')
+const distCSS = path.join(distFolder, 'style.css')
 
-async function buildPage() {
-  try {
-    if (!fs.existsSync(outputDir)) {
-      await fsPromises.mkdir(outputDir, { recursive: true })
+async function buildHTML() {
+  const templateContent = await fs.readFile(templatePath, 'utf-8')
+  const componentFiles = await fs.readdir(componentsPath)
+  const replacements = await Promise.all(
+    componentFiles.map(async file => {
+      if (path.extname(file) === '.html') {
+        const componentName = path.parse(file).name
+        const componentContent = await fs.readFile(path.join(componentsPath, file), 'utf-8')
+        return { tag: `{{${componentName}}}`, content: componentContent }
+      }
+      return null
+    }),
+  )
+
+  const updatedTemplate = replacements.reduce((result, replacement) => {
+    if (replacement) {
+      const { tag, content } = replacement
+      return result.replace(new RegExp(tag, 'g'), content)
     }
+    return result
+  }, templateContent)
 
-    await buildIndexHtml()
-    await mergeStyles()
-    await copyAssets()
-
-    console.log('Page built successfully!')
-  } catch (err) {
-    console.error('Error building the page:', err)
-  }
+  await fs.writeFile(distHTML, updatedTemplate)
 }
 
-async function buildIndexHtml() {
-  const templateContent = await fsPromises.readFile(templateFilePath, 'utf-8')
-  const componentFiles = await fsPromises.readdir(componentsDir)
-  let indexHtml = templateContent
+async function buildCSS() {
+  const files = await fs.readdir(stylesFolder)
+  const cssFiles = files.filter(file => path.extname(file) === '.css')
 
-  for (const file of componentFiles) {
-    if (path.extname(file) === '.html') {
-      const componentName = path.parse(file).name
-      const componentContent = await fsPromises.readFile(path.join(componentsDir, file), 'utf-8')
-      const regex = new RegExp(`{{${componentName}}}`, 'g')
-      indexHtml = indexHtml.replace(regex, componentContent)
-    }
-  }
+  const stylesContent = (
+    await Promise.all(cssFiles.map(file => fs.readFile(path.join(stylesFolder, file), 'utf-8')))
+  ).join('\n')
 
-  await fsPromises.writeFile(outputFilePath, indexHtml)
-}
-
-async function mergeStyles() {
-  const files = await fsPromises.readdir(stylesDir)
-  let allStyles = ''
-
-  for (const file of files) {
-    if (path.extname(file) === '.css') {
-      const cssContent = await fsPromises.readFile(path.join(stylesDir, file), 'utf-8')
-      allStyles += cssContent + '\n'
-    }
-  }
-
-  await fsPromises.writeFile(styleFilePath, allStyles)
+  await fs.writeFile(distCSS, stylesContent)
 }
 
 async function copyAssets() {
-  const files = await fsPromises.readdir(assetsDir)
+  async function copyDir(src, dest) {
+    await fs.mkdir(dest, { recursive: true })
+    const entries = await fs.readdir(src, { withFileTypes: true })
 
-  for (const file of files) {
-    const sourcePath = path.join(assetsDir, file)
-    const destPath = path.join(outputAssetsDir, file)
+    await Promise.all(
+      entries.map(entry => {
+        const srcPath = path.join(src, entry.name)
+        const destPath = path.join(dest, entry.name)
 
-    if (fs.statSync(sourcePath).isDirectory()) {
-      await fsPromises.mkdir(destPath, { recursive: true })
-      await copyDirRecursively(sourcePath, destPath)
-    } else {
-      await fsPromises.copyFile(sourcePath, destPath)
-    }
+        return entry.isDirectory() ? copyDir(srcPath, destPath) : fs.copyFile(srcPath, destPath)
+      }),
+    )
   }
+
+  await copyDir(assetsFolder, path.join(distFolder, 'assets'))
 }
 
-async function copyDirRecursively(sourceDir, destDir) {
-  const files = await fsPromises.readdir(sourceDir)
-
-  for (const file of files) {
-    const sourcePath = path.join(sourceDir, file)
-    const destPath = path.join(destDir, file)
-
-    if (fs.statSync(sourcePath).isDirectory()) {
-      await fsPromises.mkdir(destPath, { recursive: true })
-      await copyDirRecursively(sourcePath, destPath)
-    } else {
-      await fsPromises.copyFile(sourcePath, destPath)
-    }
+async function buildPage() {
+  try {
+    await fs.mkdir(distFolder, { recursive: true })
+    await Promise.all([buildHTML(), buildCSS(), copyAssets()])
+    console.log('Build completed successfully!')
+  } catch (err) {
+    console.error('Error during build:', err)
   }
 }
 

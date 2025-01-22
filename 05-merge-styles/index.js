@@ -1,33 +1,27 @@
-const fs = require('fs')
+const fs = require('fs').promises
 const path = require('path')
 
 async function mergeStyles() {
-  const stylesDir = path.join(__dirname, 'styles')
-  const outputDir = path.join(__dirname, 'project-dist')
-  const outputFile = path.join(outputDir, 'bundle.css')
+  const stylesFolder = path.join(__dirname, 'styles')
+  const outputFolder = path.join(__dirname, 'project-dist')
+  const outputFile = path.join(outputFolder, 'bundle.css')
 
-  try {
-    if (!fs.existsSync(outputDir)) {
-      fs.mkdirSync(outputDir, { recursive: true })
-    }
+  await fs.mkdir(outputFolder, { recursive: true })
 
-    const files = fs.readdirSync(stylesDir)
-    let allStyles = ''
+  const files = await fs.readdir(stylesFolder)
+  const cssFiles = files.filter(file => path.extname(file) === '.css')
 
-    for (const file of files) {
-      const filePath = path.join(stylesDir, file)
+  console.log(cssFiles)
 
-      if (fs.statSync(filePath).isFile() && path.extname(file) === '.css') {
-        const cssContent = fs.readFileSync(filePath, 'utf-8')
-        allStyles += cssContent + '\n'
-      }
-    }
+  let bundle = ''
 
-    fs.writeFileSync(outputFile, allStyles)
-    console.log('Styles have been merged into bundle.css')
-  } catch (err) {
-    console.error('Error merging styles:', err)
+  for (const file of cssFiles) {
+    const filePath = path.join(stylesFolder, file)
+    const content = await fs.readFile(filePath, 'utf-8')
+    bundle += content + '\n'
   }
+
+  await fs.writeFile(outputFile, bundle)
 }
 
-mergeStyles()
+mergeStyles().catch(err => console.error('Error:', err))
